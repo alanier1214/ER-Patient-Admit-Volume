@@ -5,8 +5,8 @@ Forecasting patients presenting to the emergency department by month, day of wee
 
 # Getting Started 
 ## How to Clone Repo
- - In your terminal, 'cd' to your working directory
- - Run 'git clone https://github.com/alanier1214/ER-Patient-Admit-Volume.git'
+ - In your terminal, `cd` to your working directory
+ - Run `git clone https://github.com/alanier1214/ER-Patient-Admit-Volume.git`
  - Open the project in your IDE
 
 ## How to Run Program
@@ -17,9 +17,9 @@ Python version 3.14 is recommended, but earlier versions will suffice.
 In your IDE be sure to specify the version of Python you want your interpreter to use.
 - Steps if using VS Code (recommended):
   - Open Command Palette:
-    - 'Cmd' + 'Shift' + 'P' on Mac
-    - 'Ctrl' + 'Shift' + 'P' on Windows
-- Search for 'Python: Select Interpreter'
+    - `Cmd` + `Shift` + `P` on Mac
+    - `Ctrl` + `Shift` + `P` on Windows
+- Search for `Python: Select Interpreter`
 - Select Python version you are running
 - Restart VS Code
 
