@@ -27,17 +27,17 @@ Sanford_ED <- Sanford_ED %>%
   mutate(Shift = Hour %/% 6, .after = Hour)  %>%
   mutate(Year = year(Date), .after = Date) %>%
   mutate(Season = (month(Date) + 2) %/% 3, .after = Year)
+
+Total_Hours <- as.numeric(as.date("2025-09-01")-as.date("2018-01-01"))
 ```
 
 ``` {r Filtered_Data}
 # Overall Hourly Summary Dataset
-Sanford_ED.Hourly <- Sanford_ED[c(1,2,4)] %>%
+Sanford_ED.Hourly <- Sanford_ED %>%
   group_by(Site, Date, Hour) %>%
-  summarise(cases = n(), .groups = "drop") %>%
+  summarise(Admissions = sum(ED.Enc.Admitted), .groups = "drop") %>%
   group_by(Site, Hour) %>%
-  summarise(cases.count = sum(cases),
-            cases.avg = mean(cases),
-            .groups = "drop")
+  summarise(Admissions.avg = mean(Admissions), .groups = "drop")
 
 #  Filtered to prediction months
 Sanford_ED.Hourly.Oct_Nov <- Sanford_ED[c(1,2,4)] %>%
@@ -57,19 +57,50 @@ Sanford_ED.Hourly.Years <- Sanford_ED[c(1,2,4,9)] %>%
   summarise(cases.count = sum(cases),
             cases.avg = mean(cases),
             .groups = "drop")
+
+# Overall Hourly Summary Dataset
+Sanford_ED.Seasonal.Years <- Sanford_ED[c(1:3,9)] %>%
+  group_by(Site, Date, Year, Season) %>%
+  summarise(cases = n(), .groups = "drop") %>%
+  group_by(Site, Year, Season) %>%
+  summarise(cases.count = sum(cases),
+            cases.avg = mean(cases),
+            .groups = "drop")
+
+# Overall Hourly Summary Dataset
+Sanford_ED.Seasonal.Years <- Sanford_ED[c(1:3,9)] %>%
+  group_by(Site, Date, Year, Season) %>%
+  summarise(cases = n(), .groups = "drop") %>%
+  group_by(Site, Year, Season) %>%
+  summarise(cases.count = sum(cases),
+            cases.avg = mean(cases),
+            .groups = "drop")
 ```
 
 ```{r Data_Plotting}
-Sanford_ED.Line_Chart <- Sanford_ED.Hourly %>%
+# ED Admissions by Hour
+Admissions.Hourly.Line_Chart <- Sanford_ED.Hourly %>%
   ggplot(aes(
     x=Hour,
-    y=cases.avg,
+    y=Admissions.avg,
     group = Site,
     color = Site)) +
   geom_line(linewidth = 1) +
-  labs(title = "Hourly Average Visits by Site: All Months") +
+  labs(title = "Avg Admissions by Hour, Site (All Months)") +
   theme_bw()
 
+# 
+Admissions.Shift.Line_Chart <- Sanford_ED.Hourly %>%
+  ggplot(aes(
+    x=Hour,
+    y=Admissions.avg,
+    group = Site,
+    color = Site)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Avg Admissions by Hour, Site (All Months)") +
+  theme_bw()
+
+# 
 Sanford_ED.Line_Chart.Oct_Nov <- Sanford_ED.Hourly.Oct_Nov %>%
   ggplot(aes(
     x=Hour,
@@ -80,20 +111,34 @@ Sanford_ED.Line_Chart.Oct_Nov <- Sanford_ED.Hourly.Oct_Nov %>%
   labs(title = "Hourly Average Visits by Site: October, November") +
   theme_bw()
 
+#
 Sanford_ED.Line_Chart.Years <- Sanford_ED.Hourly.Years %>%
   ggplot(aes(
     x=Hour,
-    y=cases.avg,
+    y=cases.count,
     group = Site,
     color = Site)) +
   geom_line(linewidth = 1) +
-  facet_grid()
+  facet_wrap(~Year) +
+  labs(title = "Hourly Average Visits by Site: All Months") +
+  theme_bw()
+
+#
+Sanford_ED.Line_Chart.Seasonal.Facet_Years <- Sanford_ED.Seasonal.Years %>%
+  ggplot(aes(
+    x=Season,
+    y=cases.count,
+    group = Site,
+    color = Site)) +
+  geom_line(linewidth = 1) +
+  facet_wrap(~Year) +
   labs(title = "Hourly Average Visits by Site: All Months") +
   theme_bw()
 ```
 
 ``` {r Display}
-Sanford_ED.Line_Chart
+Admissions.Hourly.Line_Chart
 Sanford_ED.Line_Chart.Oct_Nov
 Sanford_ED.Line_Chart.Years
+Sanford_ED.Line_Chart.Seasonal.Facet_Years
 ```
