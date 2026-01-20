@@ -1,0 +1,75 @@
+---
+title: "Sanford Competition EDA - DSU"
+author: "Martin Kloster"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Set-Up
+```{r Libraries, include=FALSE, warning=FALSE}
+library(tidyverse)
+library(readr)
+library(GGally)
+library(tidyquant)
+```
+
+```{r Data_Import}
+Sanford_ED <- read.csv("../DSU-Dataset.csv")
+```
+
+``` {r Variable_Creation}
+# Creates Variables: Shift, Season
+Sanford_ED <- Sanford_ED %>%
+  mutate(Shift = Hour %/% 6, .after = Hour)  %>%
+  mutate(Season = (month(Date) + 2) %/% 3, .after = Date)
+```
+
+``` {r Filtered_Data}
+# Overall Hourly Summary Dataset
+Sanford_ED.Hourly <- Sanford_ED[c(1,2,4)] %>%
+  group_by(Site, Date, Hour) %>%
+  summarise(cases = n(), .groups = "drop") %>%
+  group_by(Site, Hour) %>%
+  summarise(cases.count = sum(cases),
+            cases.avg = mean(cases),
+            .groups = "drop")
+
+#  Filtered to prediction months
+Sanford_ED.Hourly.Oct_Nov <- Sanford_ED[c(1,2,4)] %>%
+  filter(month(Date) %in% c(10,11)) %>%
+  group_by(Site, Date, Hour) %>%
+  summarise(cases = n(), .groups = "drop") %>%
+  group_by(Site, Hour) %>%
+  summarise(cases.count = sum(cases),
+            cases.avg = mean(cases),
+            .groups = "drop")
+```
+
+```{r Data_Plotting}
+Sanford_ED.Line_Chart <- Sanford_ED.Hourly %>%
+  ggplot(aes(
+    x=Hour,
+    y=cases.avg,
+    group = Site,
+    color = Site)) +
+  geom_line(linewidth = 1) +
+  theme_bw()
+
+Sanford_ED.Line_Chart.Oct_Nov <- Sanford_ED.Hourly.Oct_Nov %>%
+  ggplot(aes(
+    x=Hour,
+    y=cases.avg,
+    group = Site,
+    color = Site)) +
+  geom_line(linewidth = 1) +
+  theme_bw()
+```
+
+``` {r Display}
+Sanford_ED.Line_Chart
+Sanford_ED.Line_Chart.Oct_Nov
+```
