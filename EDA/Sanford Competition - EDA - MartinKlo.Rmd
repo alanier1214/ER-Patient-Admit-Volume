@@ -25,7 +25,8 @@ Sanford_ED <- read.csv("../DSU-Dataset.csv")
 # Creates Variables: Shift, Season
 Sanford_ED <- Sanford_ED %>%
   mutate(Shift = Hour %/% 6, .after = Hour)  %>%
-  mutate(Season = (month(Date) + 2) %/% 3, .after = Date)
+  mutate(Year = year(Date), .after = Date) %>%
+  mutate(Season = (month(Date) + 2) %/% 3, .after = Year)
 ```
 
 ``` {r Filtered_Data}
@@ -47,6 +48,15 @@ Sanford_ED.Hourly.Oct_Nov <- Sanford_ED[c(1,2,4)] %>%
   summarise(cases.count = sum(cases),
             cases.avg = mean(cases),
             .groups = "drop")
+
+# Overall Hourly Summary Dataset
+Sanford_ED.Hourly.Years <- Sanford_ED[c(1,2,4,9)] %>%
+  group_by(Site, Date, Year, Hour) %>%
+  summarise(cases = n(), .groups = "drop") %>%
+  group_by(Site, Year, Hour) %>%
+  summarise(cases.count = sum(cases),
+            cases.avg = mean(cases),
+            .groups = "drop")
 ```
 
 ```{r Data_Plotting}
@@ -57,6 +67,7 @@ Sanford_ED.Line_Chart <- Sanford_ED.Hourly %>%
     group = Site,
     color = Site)) +
   geom_line(linewidth = 1) +
+  labs(title = "Hourly Average Visits by Site: All Months") +
   theme_bw()
 
 Sanford_ED.Line_Chart.Oct_Nov <- Sanford_ED.Hourly.Oct_Nov %>%
@@ -66,10 +77,23 @@ Sanford_ED.Line_Chart.Oct_Nov <- Sanford_ED.Hourly.Oct_Nov %>%
     group = Site,
     color = Site)) +
   geom_line(linewidth = 1) +
+  labs(title = "Hourly Average Visits by Site: October, November") +
+  theme_bw()
+
+Sanford_ED.Line_Chart.Years <- Sanford_ED.Hourly.Years %>%
+  ggplot(aes(
+    x=Hour,
+    y=cases.avg,
+    group = Site,
+    color = Site)) +
+  geom_line(linewidth = 1) +
+  facet_grid()
+  labs(title = "Hourly Average Visits by Site: All Months") +
   theme_bw()
 ```
 
 ``` {r Display}
 Sanford_ED.Line_Chart
 Sanford_ED.Line_Chart.Oct_Nov
+Sanford_ED.Line_Chart.Years
 ```
