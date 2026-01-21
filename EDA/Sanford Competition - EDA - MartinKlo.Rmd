@@ -21,26 +21,47 @@ library(tidyquant)
 Sanford_ED <- read.csv("../DSU-Dataset.csv")
 ```
 
-``` {r Variable_Creation}
+``` {r Data_Creation}
 # Creates Variables: Shift, Season
 Sanford_ED <- Sanford_ED %>%
-  mutate(Shift = Hour %/% 6, .after = Hour)  %>%
+  #mutate(DateTime = Date) %>%
+  mutate(Shift = (Hour %/% 6) + 1, .after = Hour)  %>%
   mutate(Year = year(Date), .after = Date) %>%
   mutate(Season = (month(Date) + 2) %/% 3, .after = Year)
 
-Total_Hours <- as.numeric(as.date("2025-09-01")-as.date("2018-01-01"))
+# Calculates Elapsed Time in Dataset
+Timeframe.Start <- as.POSIXct("2018-01-01 00:00:00", tz="America/Chicago")
+Timeframe.End <- as.POSIXct("2025-08-31 23:00:00", tz="America/Chicago")
+Total_Days <- as.numeric(difftime(Timeframe.End, Timeframe.Start, units = "days"))
+Total_Hours <- as.numeric(difftime(Timeframe.End, Timeframe.Start, units = "hours"))
+
+# Creates Table for every hour in time
+Timeframe.Hours.DF <- data.frame(
+  DateTime = seq(
+    from = Timeframe.Start,
+    to = Timeframe.End,
+    by = "hour"
+  )
+)
+
+#left_join(Timeframe.Hours.DF, )
 ```
+## Data Filtering
+  Need to check if all hours represented, if columns still correspond after table manipulation. May not be accurate or even work before check. Switched variable names to be more descriptive and clear. Will need to check later plotting for consistency.
 
 ``` {r Filtered_Data}
-# Overall Hourly Summary Dataset
-Sanford_ED.Hourly <- Sanford_ED %>%
+# ========== Events ==========
+# Events by Hour
+Events.Hourly <- Sanford_ED[c(1,2,5)] %>%
   group_by(Site, Date, Hour) %>%
-  summarise(Admissions = sum(ED.Enc.Admitted), .groups = "drop") %>%
+  summarise(cases = n(), .groups = "drop") %>%
   group_by(Site, Hour) %>%
-  summarise(Admissions.avg = mean(Admissions), .groups = "drop")
+  summarise(cases.count = sum(cases),
+            cases.avg = mean(cases),
+            .groups = "drop")
 
-#  Filtered to prediction months
-Sanford_ED.Hourly.Oct_Nov <- Sanford_ED[c(1,2,4)] %>%
+# Events by Hour (Filtered: Oct, Nov)
+Events.Hourly.Oct_Nov <- Sanford_ED[c(1,2,5)] %>%
   filter(month(Date) %in% c(10,11)) %>%
   group_by(Site, Date, Hour) %>%
   summarise(cases = n(), .groups = "drop") %>%
@@ -49,8 +70,8 @@ Sanford_ED.Hourly.Oct_Nov <- Sanford_ED[c(1,2,4)] %>%
             cases.avg = mean(cases),
             .groups = "drop")
 
-# Overall Hourly Summary Dataset
-Sanford_ED.Hourly.Years <- Sanford_ED[c(1,2,4,9)] %>%
+# Events by Years and Hours
+Events.Hourly_Years <- Sanford_ED[c(1:3,5)] %>%
   group_by(Site, Date, Year, Hour) %>%
   summarise(cases = n(), .groups = "drop") %>%
   group_by(Site, Year, Hour) %>%
@@ -58,8 +79,8 @@ Sanford_ED.Hourly.Years <- Sanford_ED[c(1,2,4,9)] %>%
             cases.avg = mean(cases),
             .groups = "drop")
 
-# Overall Hourly Summary Dataset
-Sanford_ED.Seasonal.Years <- Sanford_ED[c(1:3,9)] %>%
+# Events by Years and Seasons
+Events.Seasonal_Years <- Sanford_ED[c(1:4)] %>%
   group_by(Site, Date, Year, Season) %>%
   summarise(cases = n(), .groups = "drop") %>%
   group_by(Site, Year, Season) %>%
@@ -67,41 +88,26 @@ Sanford_ED.Seasonal.Years <- Sanford_ED[c(1:3,9)] %>%
             cases.avg = mean(cases),
             .groups = "drop")
 
-# Overall Hourly Summary Dataset
-Sanford_ED.Seasonal.Years <- Sanford_ED[c(1:3,9)] %>%
-  group_by(Site, Date, Year, Season) %>%
-  summarise(cases = n(), .groups = "drop") %>%
-  group_by(Site, Year, Season) %>%
-  summarise(cases.count = sum(cases),
-            cases.avg = mean(cases),
-            .groups = "drop")
+# ========== Admissions ==========
+# Admissions by Hour
+Admissions.Hourly <- Sanford_ED %>%
+  group_by(Site, Date, Hour) %>%
+  summarise(Admissions = sum(ED.Enc.Admitted),.groups = "drop") %>%
+  group_by(Site, Hour) %>%
+  summarise(Admissions.avg = mean(Admissions), .groups = "drop")
+
+# Admissions by Shift
+Admissions.Shift <- Sanford_ED %>%
+  group_by(Site, Date, Shift) %>%
+  summarise(Admissions = sum(ED.Enc.Admitted),.groups = "drop") %>%
+  group_by(Site, Shift) %>%
+  summarise(Admissions.avg = mean(Admissions), .groups = "drop")
 ```
 
 ```{r Data_Plotting}
-# ED Admissions by Hour
-Admissions.Hourly.Line_Chart <- Sanford_ED.Hourly %>%
-  ggplot(aes(
-    x=Hour,
-    y=Admissions.avg,
-    group = Site,
-    color = Site)) +
-  geom_line(linewidth = 1) +
-  labs(title = "Avg Admissions by Hour, Site (All Months)") +
-  theme_bw()
-
-# 
-Admissions.Shift.Line_Chart <- Sanford_ED.Hourly %>%
-  ggplot(aes(
-    x=Hour,
-    y=Admissions.avg,
-    group = Site,
-    color = Site)) +
-  geom_line(linewidth = 1) +
-  labs(title = "Avg Admissions by Hour, Site (All Months)") +
-  theme_bw()
-
-# 
-Sanford_ED.Line_Chart.Oct_Nov <- Sanford_ED.Hourly.Oct_Nov %>%
+# ========== Events ==========
+# Line Chart: Events by Hour (Filtered: Oct, Nov)
+Events.Hourly.Oct_Nov.LC <- Events.Hourly.Oct_Nov %>%
   ggplot(aes(
     x=Hour,
     y=cases.avg,
@@ -111,8 +117,8 @@ Sanford_ED.Line_Chart.Oct_Nov <- Sanford_ED.Hourly.Oct_Nov %>%
   labs(title = "Hourly Average Visits by Site: October, November") +
   theme_bw()
 
-#
-Sanford_ED.Line_Chart.Years <- Sanford_ED.Hourly.Years %>%
+# Line Chart: Events by Hour (Faceted: Years)
+Events.Hourly.Facet_Years.LC <- Events.Hourly_Years %>%
   ggplot(aes(
     x=Hour,
     y=cases.count,
@@ -123,8 +129,8 @@ Sanford_ED.Line_Chart.Years <- Sanford_ED.Hourly.Years %>%
   labs(title = "Hourly Average Visits by Site: All Months") +
   theme_bw()
 
-#
-Sanford_ED.Line_Chart.Seasonal.Facet_Years <- Sanford_ED.Seasonal.Years %>%
+# Line Chart: Events by Season (Facet: Years)
+Events.Seasonal.Facet_Years.LC <- Events.Seasonal_Years %>%
   ggplot(aes(
     x=Season,
     y=cases.count,
@@ -134,11 +140,41 @@ Sanford_ED.Line_Chart.Seasonal.Facet_Years <- Sanford_ED.Seasonal.Years %>%
   facet_wrap(~Year) +
   labs(title = "Hourly Average Visits by Site: All Months") +
   theme_bw()
+
+# ========== Admissions ==========
+# Line Chart: ED Admissions by Hour
+Admissions.Hourly.LC <- Admissions.Hourly %>%
+  ggplot(aes(
+    x=Hour,
+    y=Admissions.avg,
+    group = Site,
+    color = Site)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Avg Admissions by Hour, Site (All Months)") +
+  theme_bw()
+
+# Line Chart: ED Admissions by Shift
+Admissions.Shift.LC <- Admissions.Shift %>%
+  group_by(Shift) %>%
+  ggplot(aes(
+    x=Shift,
+    y=Admissions.avg,
+    group = Site,
+    color = Site)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Avg Admissions by Shift, Site (All Months)") +
+  theme_bw()
 ```
 
 ``` {r Display}
-Admissions.Hourly.Line_Chart
-Sanford_ED.Line_Chart.Oct_Nov
-Sanford_ED.Line_Chart.Years
-Sanford_ED.Line_Chart.Seasonal.Facet_Years
+# Events
+Events.Hourly.Facet_Years.LC
+Events.Hourly.Oct_Nov.LC
+Events.Seasonal.Facet_Years.LC
+
+# Number Presenting to ED
+
+# ED Admissions
+Admissions.Hourly.LC
+Admissions.Shift.LC
 ```
