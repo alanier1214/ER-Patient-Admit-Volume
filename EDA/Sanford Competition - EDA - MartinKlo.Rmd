@@ -21,24 +21,28 @@ library(tidyquant)
 Sanford_ED <- read.csv("../DSU-Dataset.csv")
 ```
 
+# Data Wrangling
+## Data Creation
+  The original dataset has an observation for every Emergency Department (ED) Event. An Event is when people at least present at the ED, from which they may be admitted. The dataset does not include hours on site where there were no ED Events. This means that the data must first be wrangled into a format that is compatible with time series analysis (TSA).
+  *Note: The original dataset wrangling will have to be cleaned up and reapplied (where appropriate) to the TSA compatible dataset. Most filtered datasets and visualizations will have to be reworked in following code.*
 ``` {r Data_Creation}
-# Creates Variables: Shift, Season
-Sanford_ED <- Sanford_ED %>%
-  mutate(DateTime = as.POSIXct(paste(Date, sprintf("%02d:00:00", Hour),tz="America/Chicago"))) %>%
-  mutate(Shift = (Hour %/% 6) + 1, .after = Hour)  %>%
-  mutate(Year = year(Date), .after = Date) %>%
-  mutate(Season = (month(Date) + 2) %/% 3, .after = Year)
+# ========== General Variables ==========
+# Sites relavent for later crossing
+Sanford_Sites <- c('A','B','C','D')
 
-# ========== Time Table ==========
-# Calculates Elapsed Time in Dataset (Sanity Check for Time Table)
+# Timeframes for Timetable creation
 Timeframe.Start <- as.POSIXct("2018-01-01 00:00:00", tz="America/Chicago")
 Timeframe.End <- as.POSIXct("2025-08-31 23:00:00", tz="America/Chicago")
-Total_Days <- as.numeric(difftime(Timeframe.End, Timeframe.Start, units = "days"))
-Total_Hours <- as.numeric(difftime(Timeframe.End, Timeframe.Start, units = "hours"))
 
-# Sites, for crossing
-ED_Sites <- c('A','B','C','D')
+# ========== Original Dataset Wrangling (Mostly Obsolete) ==========
+# Creates Variables: Shift, Season
+Sanford_ED <- Sanford_ED %>%
+  mutate(DateTime = as.POSIXct(paste(Date, sprintf("%02d:00:00", Hour),tz="America/Chicago"))) #%>%
+#  mutate(Shift = (Hour %/% 6) + 1, .after = Hour)  %>%
+#  mutate(Year = year(Date), .after = Date) %>%
+#  mutate(Season = (month(Date) + 2) %/% 3, .after = Year)
 
+# ========== Time Table ==========
 # New Central Time Table
 Timetable <- data.frame(
   DateTime = seq(
@@ -46,7 +50,7 @@ Timetable <- data.frame(
     to = Timeframe.End,
     by = "hour"))
 
-# Sites required for proper joining
+# Cross-Join Timetable, Sites required for joining ED Events and Timetable
 Timetable.Sites <- crossing(Site = ED_Sites, DateTime = Timetable$DateTime)
 
 # Summarizes ED Visits for merging to Timetable
@@ -59,15 +63,16 @@ Summary.Hourly <- Sanford_ED %>%
             Admissions.Avg = mean(ED.Enc.Admitted),
             .groups = "drop")
 
-# Central timetable. Accounts for DateTimes w/ no Events.
-Sanford_ED.Timetable <- left_join(Timetable.Sites,
-                                  Summary.Hourly,
-                                  by = join_by(Site, DateTime)) %>%
+# Central timetable. Accounts for DateTimes w/ no Events. Time Series Analysis ready
+Sanford_ED.Timetable <- left_join(
+  Timetable.Sites,
+  Summary.Hourly,
+  by = join_by(Site, DateTime)) %>%
   mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
-  
 ```
+
 ## Data Filtering
-  Need to check if all hours represented, if columns still correspond after table manipulation. May not be accurate or even work before check. Switched variable names to be more descriptive and clear. Will need to check later plotting for consistency.
+  *Note: Will need to rework this section with the new TSA compatible dataset. Feels like this could be handled better anyways. Will have to check with professors to see if there is a better approach (IE filtering during visualization)*
 
 ``` {r Filtered_Data}
 # ========== Events ==========
@@ -123,6 +128,9 @@ Admissions.Shift <- Sanford_ED %>%
   group_by(Site, Shift) %>%
   summarise(Admissions.avg = mean(Admissions), .groups = "drop")
 ```
+
+# Data Visualization
+  *Note: As mentioned earlier, none of the following visualizations mean anything substantial (or work) until it has been moved over to the TSA compatible dataset. Start with moving old mutations to the new dataset, then work on overhauling Data Filtering, and then cascade the changes down to here.*
 
 ```{r Data_Plotting}
 # ========== Events ==========
