@@ -24,27 +24,47 @@ Sanford_ED <- read.csv("../DSU-Dataset.csv")
 ``` {r Data_Creation}
 # Creates Variables: Shift, Season
 Sanford_ED <- Sanford_ED %>%
-  #mutate(DateTime = Date) %>%
+  mutate(DateTime = as.POSIXct(paste(Date, sprintf("%02d:00:00", Hour),tz="America/Chicago"))) %>%
   mutate(Shift = (Hour %/% 6) + 1, .after = Hour)  %>%
   mutate(Year = year(Date), .after = Date) %>%
   mutate(Season = (month(Date) + 2) %/% 3, .after = Year)
 
-# Calculates Elapsed Time in Dataset
+# ========== Time Table ==========
+# Calculates Elapsed Time in Dataset (Sanity Check for Time Table)
 Timeframe.Start <- as.POSIXct("2018-01-01 00:00:00", tz="America/Chicago")
 Timeframe.End <- as.POSIXct("2025-08-31 23:00:00", tz="America/Chicago")
 Total_Days <- as.numeric(difftime(Timeframe.End, Timeframe.Start, units = "days"))
 Total_Hours <- as.numeric(difftime(Timeframe.End, Timeframe.Start, units = "hours"))
 
-# Creates Table for every hour in time
-Timeframe.Hours.DF <- data.frame(
+# Sites, for crossing
+ED_Sites <- c('A','B','C','D')
+
+# New Central Time Table
+Timetable <- data.frame(
   DateTime = seq(
     from = Timeframe.Start,
     to = Timeframe.End,
-    by = "hour"
-  )
-)
+    by = "hour"))
 
-#left_join(Timeframe.Hours.DF, )
+# Sites required for proper joining
+Timetable.Sites <- crossing(Site = ED_Sites, DateTime = Timetable$DateTime)
+
+# Summarizes ED Visits for merging to Timetable
+Summary.Hourly <- Sanford_ED %>%
+  group_by(Site, DateTime) %>%
+  summarise(Events = n(),
+            Presented.Sum = sum(ED.Enc),
+            Presented.Avg = mean(ED.Enc),
+            Admissions.Sum = sum(ED.Enc.Admitted),
+            Admissions.Avg = mean(ED.Enc.Admitted),
+            .groups = "drop")
+
+# Central timetable. Accounts for DateTimes w/ no Events.
+Sanford_ED.Timetable <- left_join(Timetable.Sites,
+                                  Summary.Hourly,
+                                  by = join_by(Site, DateTime)) %>%
+  mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
+  
 ```
 ## Data Filtering
   Need to check if all hours represented, if columns still correspond after table manipulation. May not be accurate or even work before check. Switched variable names to be more descriptive and clear. Will need to check later plotting for consistency.
