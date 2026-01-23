@@ -22,6 +22,18 @@ Sanford_ED <- read.csv("../DSU-Dataset.csv")
 ```
 
 # Data Wrangling
+## Custom Functions
+``` {r Custom_Functions}
+Timetable_Wrangling <- function(Timetable_Data, Time_Unit){
+  Timetable_Data %>%
+  group_by(Site, {{Time_Unit}}) %>%
+  summarise(Events = sum(Events),
+            across(ends_with("Sum"), sum),
+            across(ends_with("Avg"), mean),
+            .groups = "drop")
+}
+```
+
 ## Data Creation
   The original dataset has an observation for every Emergency Department (ED) Event. An Event is when people at least present at the ED, from which they may be admitted. The dataset does not include hours on site where there were no ED Events. This means that the data must first be wrangled into a format that is compatible with time series analysis (TSA).
   *Note: The original dataset wrangling will have to be cleaned up and reapplied (where appropriate) to the TSA compatible dataset. Most filtered datasets and visualizations will have to be reworked in following code.*
@@ -44,14 +56,14 @@ Sanford_ED <- Sanford_ED %>%
 
 # ========== Time Table ==========
 # New Central Time Table
-Timetable <- data.frame(
+Timeframe <- data.frame(
   DateTime = seq(
     from = Timeframe.Start,
     to = Timeframe.End,
     by = "hour"))
 
 # Cross-Join Timetable, Sites required for joining ED Events and Timetable
-Timetable.Sites <- crossing(Site = Sanford_Sites, DateTime = Timetable$DateTime)
+Timetable.Sites <- crossing(Site = Sanford_Sites, DateTime = Timeframe$DateTime)
 
 # Summarizes ED Visits for merging to Timetable
 Summary.Hourly <- Sanford_ED %>%
@@ -82,41 +94,12 @@ Sanford_ED.Timetable <- left_join(
 
 ``` {r Filtered_Data}
 # ========== Timetables ==========
-Timetable.Year <- Sanford_ED.Timetable %>%
-  group_by(Site, Year) %>%
-  summarise(Events = sum(Events),
-            across(ends_with("Sum"), sum),
-            across(ends_with("Avg"), mean),
-            .groups = "drop")
-
-Timetable.Month <- Sanford_ED.Timetable %>%
-  group_by(Site, Month) %>%
-  summarise(Events = sum(Events),
-            across(ends_with("Sum"), sum),
-            across(ends_with("Avg"), mean),
-            .groups = "drop")
-
-Timetable.Day <- Sanford_ED.Timetable %>%
-  group_by(Site, Day) %>%
-  summarise(Events = sum(Events),
-            across(ends_with("Sum"), sum),
-            across(ends_with("Avg"), mean),
-            .groups = "drop")
-  
-Timetable.Shift <- Sanford_ED.Timetable %>%
-  group_by(Site, Shift) %>%
-  summarise(Events = sum(Events),
-            across(ends_with("Sum"), sum),
-            across(ends_with("Avg"), mean),
-            .groups = "drop")
-
-Timetable.Hour <- Sanford_ED.Timetable %>%
-  group_by(Site, Hour) %>%
-  summarise(Events = sum(Events),
-            across(ends_with("Sum"), sum),
-            across(ends_with("Avg"), mean),
-            .groups = "drop")
-
+# Split into Various summary tables compatible with TSA
+Timetable.Year <- Function.Timetable(Sanford_ED.Timetable, Year)
+Timetable.Year <- Function.Timetable(Sanford_ED.Timetable, Month)
+Timetable.Year <- Function.Timetable(Sanford_ED.Timetable, Day)
+Timetable.Year <- Function.Timetable(Sanford_ED.Timetable, Shift)  
+Timetable.Year <- Function.Timetable(Sanford_ED.Timetable, Hour)
 
 # ========== Events ==========
 # Events by Hour
@@ -176,8 +159,9 @@ Timetable.Hour <- Sanford_ED.Timetable %>%
   *Note: As mentioned earlier, none of the following visualizations mean anything substantial (or work) until it has been moved over to the TSA compatible dataset. Start with moving old mutations to the new dataset, then work on overhauling Data Filtering, and then cascade the changes down to here.*
 
 ```{r Data_Plotting.Trends}
-# Total Admissions per hour; Continous (Not very useful)
-Trend.Admissions_sum.LC <- Sanford_ED.Timetable %>%
+# Total Admissions per hour; Continuous (Not very useful)
+Trend.Admissions.Sum.LC <- Sanford_ED.Timetable %>%
+  filter(Year == 2024, Month %in% c(9,10)) %>%
   ggplot(aes(
     x=DateTime,
     y=Admissions.Sum,
@@ -272,7 +256,7 @@ Cycle.Admissions.Shift.BP <- Sanford_ED.Timetable %>%
 
 ``` {r Display}
 # ========== Trends ==========
-Trend.Admissions_sum.LC
+Trend.Admissions.Sum.LC    # Too messy to be usable. Keep Looking for Modifications
 
 # ========== Cycles ==========
 # Events
