@@ -15,6 +15,8 @@ library(tidyverse)
 library(readr)
 library(GGally)
 library(tidyquant)
+library(timeDate)
+library(openxlsx)
 ```
 
 ```{r Data_Import}
@@ -42,6 +44,51 @@ Timetable_Wrangling <- function(Timetable_Data, Time_Unit){
               across(ends_with("Sum"), sum),
               across(ends_with("Avg"), mean),
               .groups = "drop")
+}
+
+add_calendar_flags <- function(df, tz = "America/Chicago") {
+
+  # Use the local calendar date for each DateTime
+  df <- df %>%
+    mutate(Date = as.Date(with_tz(DateTime, tz)))
+
+  years <- sort(unique(lubridate::year(df$Date)))
+
+  # --- Baseline "holiday" list: NYSE standard closures (includes observed holidays)
+  nyse_holidays <- as.Date(timeDate::holidayNYSE(years, type = "standard"))
+
+  # --- Custom “major” holidays ---
+  fixed_md <- c("03-17", # St. Patrick's Day
+                "05-05", # Cinco de Mayo
+                "10-31", # Halloween
+                "12-31", # New Year's Eve
+                "12-24"  # Christmas Eve
+  )
+
+  fixed_major <- as.Date(unlist(lapply(years, function(y) paste0(y, "-", fixed_md))))
+
+  # Traveling/family holidays
+  thanksgiving <- as.Date(timeDate::holiday(years, "USThanksgivingDay"))
+  black_friday <- thanksgiving + 1
+
+  major_holidays <- sort(unique(c(
+    thanksgiving, black_friday, nyse_holidays, fixed_major
+  )))
+
+  # --- Define workday and your two requested booleans ---
+  df %>%
+    mutate(
+      # Workday = Mon–Fri and not in holiday list
+      Workday = (wday(Date, week_start = 1) <= 5) & !(Date %in% nyse_holidays),
+      # 1) "Last day before a workday"
+      LastDayBeforeWorkday = (!Workday) & (
+        # Tomorrow is a workday:
+        ((wday(Date + days(1), week_start = 1) <= 5) & !((Date + days(1)) %in% nyse_holidays))
+      ),
+      # 2) “Major holiday”
+      MajorHoliday = Date %in% major_holidays
+    ) %>%
+    select(-Date)  # optional: drop helper column
 }
 ```
 
@@ -95,6 +142,7 @@ Sanford_ED.Timetable <- left_join(
 # Create Time related fields. Timetable is Time Series Analysis ready. 
 Sanford_ED.Events <- Time_Fielding(Sanford_ED)
 Sanford_ED.Timetable <- Time_Fielding(Sanford_ED.Timetable)
+Sanford_ED.Timetable <- add_calendar_flags(Sanford_ED.Timetable)
 
 # ========== Events Data ==========
 # Summarize by Reason for Visit
@@ -115,10 +163,10 @@ Events.Reasons <- Sanford_ED.Events %>%
 # ========== Timetables ==========
 # Split into Various summary tables compatible with TSA
 Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Year)
-Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Month)
-Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Day)
-Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Shift)  
-Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Hour)
+Timetable.Month <- Timetable_Wrangling(Sanford_ED.Timetable, Month)
+Timetable.Day <- Timetable_Wrangling(Sanford_ED.Timetable, Day)
+Timetable.Shift <- Timetable_Wrangling(Sanford_ED.Timetable, Shift)
+Timetable.Hour <- Timetable_Wrangling(Sanford_ED.Timetable, Hour)
 
 # ========== Events ==========
 # Events by Hour
@@ -176,6 +224,194 @@ Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Hour)
 
 # Data Visualization
   *Note: As mentioned earlier, none of the following visualizations mean anything substantial (or work) until it has been moved over to the TSA compatible dataset. Start with moving old mutations to the new dataset, then work on overhauling Data Filtering, and then cascade the changes down to here.*
+
+```{r Holiday Testing}
+Sanford_ED.Daily <- Sanford_ED.Timetable %>%
+  mutate(Date = as.Date(DateTime)) %>%
+  group_by(Site, Date, Workday, LastDayBeforeWorkday, MajorHoliday) %>%
+  summarise(
+    Presentations = sum(Presented.Sum),
+    Admissions = sum(Admissions.Sum),
+    .groups = "drop"
+  )
+
+create_flag_summary <- function(data, flag_var) {
+  data %>%
+    group_by({{flag_var}}) %>%
+    summarise(
+      Avg_Presentations = mean(Presentations),
+      Avg_Admissions = mean(Admissions),
+      .groups = "drop"
+    )
+}
+
+Workday_Summary <- create_flag_summary(Sanford_ED.Daily, Workday)
+LastDay_Summary <- create_flag_summary(Sanford_ED.Daily, LastDayBeforeWorkday)
+Holiday_Summary <- create_flag_summary(Sanford_ED.Daily, MajorHoliday)
+
+
+ggplot(
+  Workday_Summary %>%
+    pivot_longer(-Workday, names_to = "Metric", values_to = "Average"),
+  aes(x = as.factor(Workday), y = Average)
+) +
+  geom_col(position = "dodge") +
+  facet_wrap(~Metric, scales = "free_y") +
+  labs(
+    title = "Average Daily ER Presentations & Admissions\nWorkday vs Non-Workday",
+    x = "Workday",
+    y = "Average Daily Count"
+  )
+
+ggplot(
+  LastDay_Summary %>%
+    pivot_longer(-LastDayBeforeWorkday, names_to = "Metric", values_to = "Average"),
+  aes(x = as.factor(LastDayBeforeWorkday), y = Average)
+) +
+  geom_col(position = "dodge") +
+  facet_wrap(~Metric, scales = "free_y") +
+  labs(
+    title = "Average Daily ER Presentations & Admissions\nLast Day Before Workday",
+    x = "Last Day Before Workday",
+    y = "Average Daily Count"
+  )
+
+ggplot(
+  Holiday_Summary %>%
+    pivot_longer(-MajorHoliday, names_to = "Metric", values_to = "Average"),
+  aes(x = as.factor(MajorHoliday), y = Average)
+) +
+  geom_col(position = "dodge") +
+  facet_wrap(~Metric, scales = "free_y") +
+  labs(
+    title = "Average Daily ER Presentations & Admissions\nMajor Holiday vs Non-Holiday",
+    x = "Major Holiday",
+    y = "Average Daily Count"
+  )
+
+fit_single_predictor_lms <- function(data, outcome, predictor){
+  data %>%
+    group_by(Site) %>%
+    nest() %>%
+    mutate(
+      model = map(data, ~ lm(reformulate(predictor, outcome), data = .x)),
+      tidy  = map(model, broom::tidy),
+      glance = map(model, broom::glance)
+    ) %>%
+    select(Site, model, tidy, glance) %>%
+    unnest(tidy) %>%
+    mutate(outcome = outcome, predictor = predictor)
+}
+
+# Presentations models
+lm_pres_workday   <- fit_single_predictor_lms(Sanford_ED.Daily, "Presentations", "Workday")
+lm_pres_lastday   <- fit_single_predictor_lms(Sanford_ED.Daily, "Presentations", "LastDayBeforeWorkday")
+lm_pres_holiday   <- fit_single_predictor_lms(Sanford_ED.Daily, "Presentations", "MajorHoliday")
+
+# Admissions models
+lm_adm_workday    <- fit_single_predictor_lms(Sanford_ED.Daily, "Admissions", "Workday")
+lm_adm_lastday    <- fit_single_predictor_lms(Sanford_ED.Daily, "Admissions", "LastDayBeforeWorkday")
+lm_adm_holiday    <- fit_single_predictor_lms(Sanford_ED.Daily, "Admissions", "MajorHoliday")
+
+# Combine into one table
+lm_single_all <- bind_rows(
+  lm_pres_workday, lm_pres_lastday, lm_pres_holiday,
+  lm_adm_workday,  lm_adm_lastday,  lm_adm_holiday
+)
+
+lm_single_effects <- lm_single_all %>%
+  filter(term != "(Intercept)") %>%
+  arrange(outcome, predictor, Site)
+
+lm_single_effects
+
+fit_full_lms <- function(data, outcome){
+  data %>%
+    group_by(Site) %>%
+    nest() %>%
+    mutate(
+      model = map(data, ~ lm(reformulate(c("Workday","LastDayBeforeWorkday","MajorHoliday"), outcome), data = .x)),
+      tidy  = map(model, broom::tidy),
+      glance = map(model, broom::glance)
+    ) %>%
+    select(Site, model, tidy, glance) %>%
+    unnest(tidy) %>%
+    mutate(outcome = outcome, model_type = "full")
+}
+
+lm_full_presentations <- fit_full_lms(Sanford_ED.Daily, "Presentations")
+lm_full_admissions    <- fit_full_lms(Sanford_ED.Daily, "Admissions")
+
+lm_full_all <- bind_rows(lm_full_presentations, lm_full_admissions)
+
+lm_full_effects <- lm_full_all %>%
+  filter(term != "(Intercept)") %>%
+  arrange(outcome, Site, term)
+
+lm_full_effects
+
+Sanford_ED.Daily_Site2 <- Sanford_ED.Daily %>%
+  mutate(
+    DOW   = factor(wday(Date, label = TRUE, week_start = 1)),
+    Month = factor(month(Date, label = TRUE))
+  )
+
+fit_controlled_lms <- function(data, outcome){
+  data %>%
+    group_by(Site) %>%
+    nest() %>%
+    mutate(
+      model = map(data, ~ lm(
+        reformulate(c("Workday","LastDayBeforeWorkday","MajorHoliday","DOW","Month"), outcome),
+        data = .x
+      )),
+      tidy = map(model, broom::tidy),
+      glance = map(model, broom::glance)
+    ) %>%
+    select(Site, tidy, glance) %>%
+    unnest(tidy) %>%
+    mutate(outcome = outcome, model_type = "controlled")
+}
+
+lm_ctrl_presentations <- fit_controlled_lms(Sanford_ED.Daily_Site2, "Presentations")
+lm_ctrl_admissions    <- fit_controlled_lms(Sanford_ED.Daily_Site2, "Admissions")
+
+lm_ctrl_effects <- bind_rows(lm_ctrl_presentations, lm_ctrl_admissions) %>%
+  filter(term %in% c("WorkdayTRUE","LastDayBeforeWorkdayTRUE","MajorHolidayTRUE")) %>%
+  arrange(outcome, Site, term)
+
+lm_ctrl_effects
+
+glance_by_site <- function(data, outcome, formula_terms){
+  data %>%
+    group_by(Site) %>%
+    nest() %>%
+    mutate(
+      model = map(data, ~ lm(reformulate(formula_terms, outcome), data = .x)),
+      g = map(model, broom::glance)
+    ) %>%
+    select(Site, g) %>%
+    unnest(g) %>%
+    mutate(outcome = outcome)
+}
+
+glance_full <- bind_rows(
+  glance_by_site(Sanford_ED.Daily,  "Presentations", c("Workday","LastDayBeforeWorkday","MajorHoliday")),
+  glance_by_site(Sanford_ED.Daily,  "Admissions",    c("Workday","LastDayBeforeWorkday","MajorHoliday"))
+)
+
+glance_full %>% select(Site, outcome, r.squared, adj.r.squared, sigma, statistic, p.value)
+
+# Write File
+write.xlsx(
+  list(
+    Single = lm_single_effects,
+    Full = lm_full_effects,
+    Controlled = lm_ctrl_effects
+  ),
+  file = "ED_LM_Results_By_Site.xlsx"
+)
+```
 
 ```{r Data_Plotting.Trends}
 # Total Admissions per hour; Continuous (Not very useful)
