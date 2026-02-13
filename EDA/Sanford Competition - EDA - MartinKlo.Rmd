@@ -24,13 +24,24 @@ Sanford_ED <- read.csv("../DSU-Dataset.csv")
 # Data Wrangling
 ## Custom Functions
 ``` {r Custom_Functions}
+Time_Fielding <- function(Dataset){
+  Dataset %>%
+    mutate(Year = as.factor(year(DateTime)),
+         Month = as.factor(month(DateTime)),
+         Day = as.factor(day(DateTime)),
+         Shift = as.factor((hour(DateTime) %/% 6) + 1),
+         Hour = as.factor(hour(DateTime)),
+         .after = DateTime)
+}
+
+# Have to change this. Currently averages averages.
 Timetable_Wrangling <- function(Timetable_Data, Time_Unit){
   Timetable_Data %>%
-  group_by(Site, {{Time_Unit}}) %>%
-  summarise(Events = sum(Events),
-            across(ends_with("Sum"), sum),
-            across(ends_with("Avg"), mean),
-            .groups = "drop")
+    group_by(Site, {{Time_Unit}}) %>%
+    summarise(Events = sum(Events),
+              across(ends_with("Sum"), sum),
+              across(ends_with("Avg"), mean),
+              .groups = "drop")
 }
 ```
 
@@ -39,23 +50,22 @@ Timetable_Wrangling <- function(Timetable_Data, Time_Unit){
   *Note: The original dataset wrangling will have to be cleaned up and reapplied (where appropriate) to the TSA compatible dataset. Most filtered datasets and visualizations will have to be reworked in following code.*
 ``` {r Data_Creation}
 # ========== General Variables ==========
-# Sites relavent for later crossing
+# Sites relevant for later crossing
 Sanford_Sites <- c('A','B','C','D')
+Drop_Fields <- c("Date", "Hour")
 
-# Timeframes for Timetable creation
+# ========== Original Dataset ==========
+# Creates DateTime for future datasets
+Sanford_ED <- Sanford_ED %>%
+  mutate(DateTime = as.POSIXct(paste(Date, sprintf("%02d:00:00", Hour),tz="America/Chicago")), .after = Site) %>%
+  select(-Date, -Hour)
+
+# ========== Time Table ==========
+# Timeframe for Timetable creation
 Timeframe.Start <- as.POSIXct("2018-01-01 00:00:00", tz="America/Chicago")
 Timeframe.End <- as.POSIXct("2025-08-31 23:00:00", tz="America/Chicago")
 
-# ========== Original Dataset Wrangling (Mostly Obsolete) ==========
-# Creates Variables: Shift, Season
-Sanford_ED <- Sanford_ED %>%
-  mutate(DateTime = as.POSIXct(paste(Date, sprintf("%02d:00:00", Hour),tz="America/Chicago"))) #%>%
-#  mutate(Shift = (Hour %/% 6) + 1, .after = Hour)  %>%
-#  mutate(Year = year(Date), .after = Date) %>%
-#  mutate(Season = (month(Date) + 2) %/% 3, .after = Year)
-
-# ========== Time Table ==========
-# New Central Time Table
+# Time Table Skeleton
 Timeframe <- data.frame(
   DateTime = seq(
     from = Timeframe.Start,
@@ -75,18 +85,27 @@ Summary.Hourly <- Sanford_ED %>%
             Admissions.Avg = mean(ED.Enc.Admitted),
             .groups = "drop")
 
-# Central timetable. Accounts for DateTimes w/ no Events. Time Series Analysis ready
+# Central timetable. Accounts for DateTimes w/o Events.
 Sanford_ED.Timetable <- left_join(
   Timetable.Sites,
   Summary.Hourly,
   by = join_by(Site, DateTime)) %>%
-  mutate(across(where(is.numeric), ~ replace_na(.x, 0))) %>%
-  mutate(Year = as.factor(year(DateTime)),
-         Month = as.factor(month(DateTime)),
-         Day = as.factor(day(DateTime)),
-         Shift = as.factor((hour(DateTime) %/% 6) + 1),
-         Hour = as.factor(hour(DateTime)),
-         .after = DateTime)
+  mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
+
+# Create Time related fields. Timetable is Time Series Analysis ready. 
+Sanford_ED.Events <- Time_Fielding(Sanford_ED)
+Sanford_ED.Timetable <- Time_Fielding(Sanford_ED.Timetable)
+
+# ========== Events Data ==========
+# Summarize by Reason for Visit
+Events.Reasons <- Sanford_ED.Events %>%
+  group_by(REASON_VISIT_NAME) %>%
+  summarise(Events = n(),
+            Presentations.Sum = sum(ED.Enc),
+            Presentations.Avg = mean(ED.Enc),
+            Admissions.Sum = sum(ED.Enc.Admitted),
+            Admissions.Avg = mean(ED.Enc.Admitted),
+            Conversion_Rate = sum(ED.Enc.Admitted) / sum(ED.Enc))
 ```
 
 ## Data Filtering
@@ -95,11 +114,11 @@ Sanford_ED.Timetable <- left_join(
 ``` {r Filtered_Data}
 # ========== Timetables ==========
 # Split into Various summary tables compatible with TSA
-Timetable.Year <- Function.Timetable(Sanford_ED.Timetable, Year)
-Timetable.Year <- Function.Timetable(Sanford_ED.Timetable, Month)
-Timetable.Year <- Function.Timetable(Sanford_ED.Timetable, Day)
-Timetable.Year <- Function.Timetable(Sanford_ED.Timetable, Shift)  
-Timetable.Year <- Function.Timetable(Sanford_ED.Timetable, Hour)
+Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Year)
+Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Month)
+Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Day)
+Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Shift)  
+Timetable.Year <- Timetable_Wrangling(Sanford_ED.Timetable, Hour)
 
 # ========== Events ==========
 # Events by Hour
@@ -173,6 +192,16 @@ Trend.Admissions.Sum.LC <- Sanford_ED.Timetable %>%
 
 ```{r Data_Plotting.Cycles}
 # ========== Events ==========
+# Top Causes of Presentations (Bar Chart)
+Summary.Causes.Presentations.BC <- Sanford_ED.Events %>%
+  ggplot(aes(
+    x= REASON_VISIT_NAME,
+    y= sum(ED.Enc))) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  labs(title = "Top Admissions for ED Presentations (All Months)") +
+  theme_bw()
+
 # Line Chart: Events by Hour (Filtered: Oct, Nov)
 # Events.Hourly.Oct_Nov.LC <- Events.Hourly.Oct_Nov %>%
 #   ggplot(aes(
@@ -271,4 +300,6 @@ Cycle.Admissions.Avg.Hourly.LC
 Cycle.Admissions.Shift.BP
 #Admissions.Hourly.LC
 #Admissions.Shift.LC
+
+Summary.Causes.Presentations.BC
 ```
